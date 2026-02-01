@@ -28,6 +28,12 @@ benchmark.py
 how_to_make_video_demos.txt
 
 .vscode/
+
+# uv/venv
+.venv/
+uv.lock
+pyproject.toml
+
 test_pr*.py
 demo_for_*.py
 examples/**/zou*
