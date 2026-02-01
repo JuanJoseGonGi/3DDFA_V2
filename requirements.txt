@@ -13,3 +13,8 @@ scikit-image # skimage
 scipy
 onnxruntime
 gradio
+
+# LiteRT dependencies (for TDDFA_LiteRT)
+# Install with: pip install ai-edge-torch-nightly ai-edge-litert
+ai-edge-torch-nightly
+ai-edge-litert

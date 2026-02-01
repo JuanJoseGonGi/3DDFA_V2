@@ -14,6 +14,7 @@ The code repo is owned and maintained by **[Jianzhu Guo](https://guojianzhu.com)
 
 
 **\[Updates\]**
+ - **`2026.1.31`**: **Add LiteRT (formerly TensorFlow Lite) support with CompiledModel API v2.0+** for high-performance on-device inference with automated accelerator selection, see [TDDFA_LiteRT.py](./TDDFA_LiteRT.py) and [demo_litert.py](./demo_litert.py) for details.
  - `2021.7.10`: Run 3DDFA_V2 online on [Gradio](https://gradio.app/hub/AK391/3DDFA_V2).
  - `2021.1.15`: Borrow the implementation of [Dense-Head-Pose-Estimation](https://github.com/1996scarlet/Dense-Head-Pose-Estimation) for the faster mesh rendering (speedup about 3x, 15ms -> 4ms), see [utils/render_ctypes.py](./utils/render_ctypes.py) for details.
  - `2020.10.7`: Add the latency evaluation of the full pipeline in [latency.py](./latency.py), just run by `python3 latency.py --onnx`, see [Latency](#Latency) evaluation for details.
@@ -107,6 +108,86 @@ Running on a video will give:
 More results or demos to see: [Hathaway](https://guojianzhu.com/assets/videos/hathaway_3ddfa_v2.mp4).
 
 <!-- Obviously, the eyes parts are not good. -->
+
+### LiteRT (TensorFlow Lite) Support
+
+This fork adds **LiteRT** (formerly TensorFlow Lite) support with the modern **CompiledModel API v2.0+** for high-performance on-device AI inference. LiteRT provides automated accelerator selection, true async execution, and better performance than the legacy Interpreter API.
+
+#### Installation
+
+Install the LiteRT dependencies:
+
+```bash
+pip install ai-edge-torch-nightly ai-edge-litert
+```
+
+#### Usage
+
+**1. Convert PyTorch model to TFLite:**
+
+```python
+from utils.litert import convert_to_tflite
+import yaml
+
+# Load config
+config = yaml.load(open('configs/mb1_120x120.yml'), Loader=yaml.SafeLoader)
+
+# Convert model
+tflite_fp = convert_to_tflite(**config)
+print(f"Model saved to: {tflite_fp}")
+```
+
+**2. Run inference with LiteRT:**
+
+```shell script
+# Run demo with LiteRT
+python3 demo_litert.py -f examples/inputs/emma.jpg -o 3d
+
+# With verbose output and benchmarking
+python3 demo_litert.py -f examples/inputs/emma.jpg --verbose
+
+# Enable GPU delegate (if available)
+python3 demo_litert.py -f examples/inputs/emma.jpg --gpu
+```
+
+**3. Use TDDFA_LiteRT in your code:**
+
+```python
+from TDDFA_LiteRT import TDDFA_LiteRT
+import yaml
+
+# Load config
+cfg = yaml.load(open('configs/mb1_120x120.yml'), Loader=yaml.SafeLoader)
+
+# Initialize (auto-converts if .tflite doesn't exist)
+tddfa = TDDFA_LiteRT(**cfg)
+
+# Run inference
+param_lst, roi_box_lst = tddfa(img, boxes)
+ver_lst = tddfa.recon_vers(param_lst, roi_box_lst)
+```
+
+#### Features
+
+- **CompiledModel API**: Uses LiteRT v2.0+ CompiledModel API for best performance
+- **Automatic conversion**: Converts PyTorch models to TFLite automatically if not present
+- **Accelerator support**: CPU, GPU, and NPU delegates (when available)
+- **Benchmarking**: Built-in performance benchmarking tools
+- **Mobile-ready**: Compatible with Android and iOS deployment
+
+#### Conversion Details
+
+The conversion uses `ai-edge-torch` to convert PyTorch models directly to TFLite format:
+
+```python
+import ai_edge_torch
+
+# Convert model
+edge_model = ai_edge_torch.convert(model, sample_input)
+edge_model.export('model.tflite')
+```
+
+This approach preserves model accuracy while optimizing for on-device inference.
 
 ### Features (up to now)
 
