@@ -8,6 +8,20 @@ This implementation provides:
 - LiteRT CompiledModel API for async execution and accelerator selection
 - Support for CPU, GPU, and NPU delegates
 - Compatible with LiteRT v2.0+ API
+- Automatic NCHW/NHWC format detection and handling
+
+Input Format Support:
+-------------------
+This class automatically detects and handles both NCHW and NHWC tensor formats:
+
+- NCHW (channels-first): [batch, channels, height, width] = [1, 3, 120, 120]
+  Common in PyTorch models. Image preprocessing transposes HWC to CHW.
+
+- NHWC (channels-last): [batch, height, width, channels] = [1, 120, 120, 3]
+  Common in TensorFlow/TFLite models. Image preprocessing keeps HWC format.
+
+The format is automatically detected from the model's input tensor shape during
+initialization. No manual configuration is required.
 """
 
 __author__ = "3DDFA_V2 LiteRT Fork"
@@ -183,8 +197,54 @@ class TDDFA_LiteRT(object):
             self.use_compiled_model = False
             print("Successfully loaded model with Interpreter API")
 
+            # Detect input format from model's input tensor shape
+            self._detect_input_format()
+
         except Exception as e:
             raise RuntimeError(f"Failed to initialize LiteRT interpreter: {e}")
+
+    def _detect_input_format(self):
+        """
+        Detect whether the model expects NCHW or NHWC input format.
+
+        Analyzes the input tensor shape to determine the format:
+        - NCHW: shape = [1, 3, H, W] where channels (3) is at index 1
+        - NHWC: shape = [1, H, W, 3] where channels (3) is at index 3
+
+        Sets self.is_nhwc flag and prints detected format.
+        """
+        input_shape = self.input_details[0]["shape"]
+        self.input_shape = input_shape
+
+        # Detect format based on channel dimension position
+        # NCHW: [batch, channels, height, width] -> channels at index 1
+        # NHWC: [batch, height, width, channels] -> channels at index 3
+        if len(input_shape) != 4:
+            raise ValueError(f"Expected 4D input tensor, got shape: {input_shape}")
+
+        batch, dim1, dim2, dim3 = input_shape
+
+        # Check which dimension is likely the channel (3 for RGB)
+        if dim1 == 3 and dim3 != 3:
+            # Shape is [N, 3, H, W] -> NCHW
+            self.is_nhwc = False
+            self.format = "NCHW"
+        elif dim3 == 3 and dim1 != 3:
+            # Shape is [N, H, W, 3] -> NHWC
+            self.is_nhwc = True
+            self.format = "NHWC"
+        elif dim1 == 3 and dim3 == 3:
+            # Ambiguous case: both could be 3 (e.g., [1, 3, 3, 3])
+            # Default to NCHW for backward compatibility
+            self.is_nhwc = False
+            self.format = "NCHW (ambiguous, default)"
+        else:
+            # No dimension is 3, assume NCHW for backward compatibility
+            self.is_nhwc = False
+            self.format = "NCHW (assumed)"
+
+        print(f"Detected input format: {self.format}")
+        print(f"Input tensor shape: {list(input_shape)}")
 
     def __call__(self, img_ori, objs, **kvs):
         """
@@ -227,8 +287,17 @@ class TDDFA_LiteRT(object):
             img = img.astype(np.float32)
             img = (img - 127.5) / 128.0
 
-            # Convert to NCHW format (batch, channels, height, width)
-            img = img.transpose(2, 0, 1)[np.newaxis, ...]
+            # Format tensor based on detected model format
+            # NCHW: [batch, channels, height, width] -> transpose HWC to CHW
+            # NHWC: [batch, height, width, channels] -> keep HWC format
+            if self.is_nhwc:
+                # NHWC format: just add batch dimension
+                img = img[np.newaxis, ...]  # [H, W, 3] -> [1, H, W, 3]
+            else:
+                # NCHW format: transpose HWC to CHW, then add batch dimension
+                img = img.transpose(2, 0, 1)[
+                    np.newaxis, ...
+                ]  # [H, W, 3] -> [1, 3, H, W]
 
             # Run inference
             if kvs.get("timer_flag", False):
@@ -251,7 +320,9 @@ class TDDFA_LiteRT(object):
         Run inference using the appropriate API
 
         Args:
-            img: Preprocessed image array (NCHW format)
+            img: Preprocessed image array (NCHW or NHWC format, based on model)
+                   - NCHW: [1, 3, H, W] for channels-first models
+                   - NHWC: [1, H, W, 3] for channels-last models
 
         Returns:
             np.ndarray: Model output (3DMM parameters)
@@ -341,10 +412,12 @@ class TDDFA_LiteRT(object):
         }
 
         if not self.use_compiled_model:
-            info["input_shape"] = self.input_details[0]["shape"]
-            info["output_shape"] = self.output_details[0]["shape"]
-            info["input_dtype"] = self.input_details[0]["dtype"]
-            info["output_dtype"] = self.output_details[0]["dtype"]
+            info["input_shape"] = list(self.input_details[0]["shape"])
+            info["output_shape"] = list(self.output_details[0]["shape"])
+            info["input_dtype"] = str(self.input_details[0]["dtype"])
+            info["output_dtype"] = str(self.output_details[0]["dtype"])
+            info["input_format"] = getattr(self, "format", "Unknown")
+            info["is_nhwc"] = getattr(self, "is_nhwc", False)
 
         return info
 
@@ -352,6 +425,8 @@ class TDDFA_LiteRT(object):
 def benchmark_model(tflite_fp, size=120, num_runs=100):
     """
     Benchmark the TFLite model performance
+
+    Automatically detects NCHW/NHWC format from model input shape.
 
     Args:
         tflite_fp: Path to TFLite model file
@@ -373,8 +448,29 @@ def benchmark_model(tflite_fp, size=120, num_runs=100):
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 
+    # Detect input format from shape
+    input_shape = list(input_details[0]["shape"])
+    print(f"Model input shape: {input_shape}")
+
+    # Determine format and create appropriate test input
+    if len(input_shape) == 4:
+        batch, dim1, dim2, dim3 = input_shape
+        if dim1 == 3 and dim3 != 3:
+            # NCHW format: [1, 3, H, W]
+            print("Detected format: NCHW (channels-first)")
+            test_input = np.random.randn(1, 3, size, size).astype(np.float32)
+        elif dim3 == 3 and dim1 != 3:
+            # NHWC format: [1, H, W, 3]
+            print("Detected format: NHWC (channels-last)")
+            test_input = np.random.randn(1, size, size, 3).astype(np.float32)
+        else:
+            # Ambiguous, default to NCHW
+            print("Ambiguous format, defaulting to NCHW")
+            test_input = np.random.randn(1, 3, size, size).astype(np.float32)
+    else:
+        raise ValueError(f"Unexpected input shape: {input_shape}")
+
     # Warm up
-    test_input = np.random.randn(1, 3, size, size).astype(np.float32)
     for _ in range(10):
         interpreter.set_tensor(input_details[0]["index"], test_input)
         interpreter.invoke()
