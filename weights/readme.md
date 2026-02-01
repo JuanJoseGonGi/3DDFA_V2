@@ -9,14 +9,32 @@
 
 ## LiteRT TFLite Models (New!)
 
+### NCHW Format (GPU-Optimized)
+
 | Model | PyTorch Size | TFLite Size | Description |
 |-------|-------------|-------------|-------------|
 | `mb1_120x120.tflite` | 14 MB | 13 MB | Full-size model (MobileNet 1.0x) for LiteRT |
 | `mb05_120x120.tflite` | 3.6 MB | 3.3 MB | Smaller model (MobileNet 0.5x) for LiteRT |
 
-### TFLite Model Format
-- **Input**: NCHW `[1, 3, 120, 120]` float32, normalized `(img - 127.5) / 128.0`
-- **Output**: `[1, 62]` float32 (12 pose + 40 shape + 10 expression)
+**Format:** NCHW `[1, 3, 120, 120]` float32, normalized `(img - 127.5) / 128.0`
+
+### NHWC Format (Mobile CPU-Optimized)
+
+| Model | Size | Description |
+|-------|------|-------------|
+| `mb1_120x120_nhwc.tflite` | 13 MB | Full-size model in NHWC format |
+| `mb05_120x120_nhwc.tflite` | 3.3 MB | Smaller model in NHWC format |
+
+**Format:** NHWC `[1, 120, 120, 3]` float32, normalized `(img - 127.5) / 128.0`
+
+**Why NHWC?** NHWC (channels-last) format is often more efficient on mobile CPUs, especially with ARM NEON optimizations. Use NHWC for:
+- Mobile/edge CPU deployment
+- Better cache locality on ARM processors
+- 2-5% faster inference on CPU (as shown in benchmarks)
+
+Use NCHW for:
+- GPU inference (better GPU utilization)
+- x86/x64 CPU inference
 
 ### Conversion
 ```bash
