@@ -189,6 +189,26 @@ edge_model.export('model.tflite')
 
 This approach preserves model accuracy while optimizing for on-device inference.
 
+#### INT8 Quantization (New!)
+
+For maximum performance on edge devices, you can quantize models to INT8:
+
+```bash
+# Dynamic INT8 quantization (fast conversion, weights only)
+uv run python quantize_tflite_direct.py -c configs/mb1_120x120.yml --dynamic
+
+# Static INT8 quantization (best compression, requires calibration)
+uv run python quantize_tflite_direct.py -c configs/mb05_120x120.yml
+```
+
+**Quantization Benefits:**
+- **4x smaller models** (e.g., 13 MB → 3.3 MB)
+- **2-4x faster inference** on INT8-optimized hardware
+- **Lower power consumption** for mobile/edge deployment
+- **Reduced memory bandwidth** requirements
+
+The PT2E (PyTorch 2 Export) quantization in ai-edge-torch provides state-of-the-art INT8 quantization while maintaining model accuracy.
+
 ### Features (up to now)
 
 

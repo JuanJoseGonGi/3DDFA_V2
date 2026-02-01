@@ -34,4 +34,31 @@ tddfa = TDDFA_LiteRT(tflite_fp='weights/mb1_120x120.tflite')
 param_lst, roi_box_lst = tddfa(img, boxes)
 ```
 
-See [convert_to_tflite.py](../convert_to_tflite.py) and [TDDFA_LiteRT.py](../TDDFA_LiteRT.py) for details.
+### INT8 Quantization
+
+For edge deployment with maximum performance, you can quantize the TFLite models to INT8:
+
+**Option 1: PT2E Quantization during conversion (Recommended)**
+```bash
+# Dynamic INT8 (weights only, fastest conversion)
+uv run python quantize_tflite_direct.py -c configs/mb1_120x120.yml --dynamic
+
+# Static INT8 (weights + activations, best compression, requires calibration)
+uv run python quantize_tflite_direct.py -c configs/mb05_120x120.yml
+```
+
+**Option 2: Post-training quantization on existing TFLite models**
+
+The `quantize_tflite.py` script provides additional quantization methods:
+- `dynamic`: Dynamic range quantization (weights to INT8, activations remain float32)
+- `int8`: Full integer quantization (requires calibration data)
+- `fp16`: Float16 quantization (optimized for GPU inference)
+
+**Expected quantized model sizes:**
+- INT8 Dynamic: ~25% size reduction (e.g., 13 MB → 3.3 MB)
+- INT8 Static: ~75% size reduction (e.g., 13 MB → 3.3 MB) 
+- FP16: ~50% size reduction (e.g., 13 MB → 6.5 MB)
+
+**Note:** Due to TensorFlow API changes in version 2.20, the `from_buffer` method is no longer available for direct TFLite-to-TFLite quantization. The PT2E approach (Option 1) is the recommended method for new conversions.
+
+See [convert_to_tflite.py](../convert_to_tflite.py), [TDDFA_LiteRT.py](../TDDFA_LiteRT.py), and [quantize_tflite_direct.py](../quantize_tflite_direct.py) for details.

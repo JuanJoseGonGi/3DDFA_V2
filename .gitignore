@@ -34,6 +34,13 @@ how_to_make_video_demos.txt
 uv.lock
 pyproject.toml
 
+# Development tools
+.serena/
+
+# Temporary files
+*.onnx.data
+*.tflite.data
+
 test_pr*.py
 demo_for_*.py
 examples/**/zou*
